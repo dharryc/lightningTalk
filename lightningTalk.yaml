@@ -1,0 +1,153 @@
+## GitHub Actions workflow to build and deploy an ASP.NET Core app to Azure App Service
+## Docs for the Azure Web Apps Deploy action: https://github.com/Azure/webapps-deploy
+## More GitHub Actions for Azure: https://github.com/Azure/actions
+
+# A display name for the workflow shown in the Actions tab
+name: Build and deploy ASP.Net Core app to Azure Web App - HarryLeilaFrontend
+
+on: # Events that trigger this workflow
+  push: # Run automatically when code is pushed
+    branches:
+      - main # Only run for pushes to the main branch
+  workflow_dispatch: # Allow manual runs from the GitHub UI
+    inputs: # Specifies allowed inputs for the workflow_dispatch event
+      environment: # Name of the input
+          description: Which environment to deploy to?
+          type: choice
+          options: [staging, production]
+          required: true
+          default: staging
+jobs: # Jobs run on GitHub-hosted runners and contain one or more steps
+  build: # Job 1: Build and publish the app, then upload the artifact
+    runs-on: ubuntu-latest # Use the latest Ubuntu image for this job
+    permissions:
+      contents: read # Required permission so actions/checkout can read repository contents
+
+    steps: # Steps execute sequentially within a job
+      - uses: actions/checkout@v4 # Check out the repo so subsequent steps have the code
+
+      - name: Set up .NET Core # Install the .NET SDK on the runner VM
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.x' # Install any available .NET 9 SDK version (latest patch)
+
+      - name: Restore dependencies # Restore NuGet packages for the specified project
+        run: dotnet restore MyWebApp/MyWebApp.csproj
+        
+      - name: Build with dotnet # Compile the project in Release configuration
+        run: dotnet build MyWebApp/MyWebApp.csproj --configuration Release --no-restore --verbosity minimal
+
+      - name: dotnet publish # Produce deployable files into an output folder
+        run: dotnet publish MyWebApp/MyWebApp.csproj -c Release -o ${{env.DOTNET_ROOT}}/myapp --no-build --no-restore --verbosity normal
+
+      - name: Upload artifact for deployment job # Save the published output for the deploy job
+        uses: actions/upload-artifact@v4
+        with:
+          name: .net-app # The artifact name (used later when downloading)
+          path: ${{env.DOTNET_ROOT}}/myapp # The folder created by the publish step
+
+  deploy: # Job 2: Download the artifact and deploy to Azure App Service
+    runs-on: ubuntu-latest # Use Ubuntu runner for deployment tasks
+    needs: build # Ensure the deploy job waits for a successful build job
+    permissions:
+      id-token: write # Enable OIDC token for passwordless/federated Azure login
+      contents: read # Minimal repo read permissions (needed by some actions)
+
+    steps:
+      - name: Download artifact from build job # Retrieve the artifact produced by the build job
+        uses: actions/download-artifact@v4
+        with:
+          name: .net-app # Must match the artifact name used during upload
+          # By default, files are extracted into a folder in the working directory
+      
+      - name: Login to Azure # Authenticate to Azure using OIDC via azure/login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_A703DD78691E4DE2B4A45FF5586D4FEA }} # App registration (client) ID stored as a secret
+          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_C8AD49E9913D43278AAF24BDCDA8C33F }} # Azure AD tenant ID secret
+          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_4C4975E7B2DB4622828A5B38DF27E244 }} # Azure subscription ID secret
+
+      - name: Deploy to Azure Web App # Deploy the downloaded package contents to the Web App/slot
+        id: deploy-to-webapp # Step ID (allows referencing outputs from this step)
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: 'HarryLeilaFrontend' # Name of the target Azure App Service (must exist)
+          slot-name: 'Production' # Deployment slot (Production is the default slot)
+          package: . # Path to deploy; '.' means current working directory after artifact download
+          
+
+# You push code → GitHub detects a workflow trigger (on: push to main)
+
+# GitHub spins up a runner VM
+
+# Clean, temporary virtual machine (usually Ubuntu)
+
+# Preloaded with tools (Git, .NET, Node, PowerShell, etc.)
+
+# Gets a temporary token to access your repo
+
+# Runner checks out your code
+
+# actions/checkout clones your repo into the VM workspace
+
+# Build phase begins
+
+# dotnet restore downloads dependencies
+
+# dotnet build compiles your app
+
+# dotnet publish packages it for deployment
+
+# Artifacts are saved (optional)
+
+# upload-artifact stores your published files for later use
+
+# Allows another job (like deploy) to use them on a fresh VM
+
+# Deploy job starts
+
+# GitHub spins up a new, clean VM
+
+# download-artifact retrieves the build output
+
+# Login to Azure
+
+# azure/login action authenticates the runner
+
+# Uses either:
+
+# OIDC (recommended): short-lived token from GitHub → Azure
+
+# Client secret: stored in GitHub repo secrets
+
+# Deploy to Azure
+
+# azure/webapps-deploy zips and uploads your app
+
+# Uses Azure’s /api/zipdeploy endpoint
+
+# Azure unpacks it and restarts your Web App
+
+# Cleanup
+
+# Runner VM is destroyed (no data or secrets persist)
+
+# Logs and artifacts are saved to GitHub Actions tab
+
+# Repeatable automation
+
+# Every push triggers the same clean process
+
+# Ensures consistent builds and deployments
+
+# 🌍 Works with other platforms too
+
+# GitHub VM can connect to any service, not just Azure:
+
+# AWS (aws-actions/configure-aws-credentials)
+
+# Google Cloud (google-github-actions/auth)
+
+# Heroku / DigitalOcean / Netlify / Vercel via their CLIs or APIs
+
+# FTP / SSH / Kubernetes via scripts
